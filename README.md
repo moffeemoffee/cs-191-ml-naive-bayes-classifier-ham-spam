@@ -2,6 +2,7 @@
 
 ## Folder structure
 
+```
 ├── dataset
 |  └── trec07p
 |     ├── data
@@ -17,8 +18,9 @@
 |  └── tcl
 ├── preprocess.py
 └── requirements.txt
+```
 
-Get the data set from https://plg.uwaterloo.ca/~gvcormac/treccorpus07/
+Get the data set from https://plg.uwaterloo.ca/~gvcormac/treccorpus07/ and extract it
 
 ## Pre-requisites
 
