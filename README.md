@@ -9,13 +9,7 @@
 |     ├── delay
 |     ├── full
 |     ├── partial
-|     ├── processed.csv
 |     └── README.txt
-├── env
-|  ├── Include
-|  ├── Lib
-|  ├── Scripts
-|  └── tcl
 ├── preprocess.py
 └── requirements.txt
 ```
