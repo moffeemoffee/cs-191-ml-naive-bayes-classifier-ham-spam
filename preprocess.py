@@ -1,14 +1,18 @@
-import pandas as pd
+from mailparser import parse_from_file
+from os import path
+from threading import Thread
+from tqdm import tqdm
 import numpy as np
-import mailparser
-import os
-import threading
+import pandas as pd
+import re
 
 exit_flag = 0
 
 dataset_path = 'dataset/trec07p/'
 index_path = 'full/index'
 csv_path = 'processed.csv'
+
+_cleanr = re.compile('<.*?>')
 
 
 def preprocess(index):
@@ -17,46 +21,56 @@ def preprocess(index):
     files['text'] = ''
 
     results = _parallel_preprocess(files, 8)
-    results.to_csv(os.path.join(dataset_path, csv_path))
+    results.to_csv(path.join(dataset_path, csv_path))
 
 
 def _parallel_preprocess(files, num_threads=2):
     threads = []
     thread_results = []
+    total_files_num = len(files.index)
 
-    split_files = np.array_split(files, num_threads)
-    for i in range(num_threads):
-        new_thread = emailParseThread(
-            i, 'emailParseThread{}'.format(i), split_files[i])
-        threads.append(new_thread)
-        new_thread.start()
+    with tqdm(total=total_files_num, unit='files') as pbar:
+        split_files = np.array_split(files, num_threads)
+        for i in range(num_threads):
+            new_thread = emailParseThread(
+                i, 'emailParseThread{}'.format(i), split_files[i], pbar)
+            threads.append(new_thread)
+            new_thread.start()
 
-    for thread in threads:
-        thread.join()
-        thread_results.append(thread.files)
+        for thread in threads:
+            thread.join()
+            thread_results.append(thread.files)
 
     return pd.concat(thread_results)
 
 
-class emailParseThread(threading.Thread):
-    def __init__(self, thread_id, name, files):
-        threading.Thread.__init__(self)
+class emailParseThread(Thread):
+    def __init__(self, thread_id, name, files, pbar):
+        Thread.__init__(self)
         self.thread_id = thread_id
         self.name = name
         self.files = files
+        self.progress = 0
+        self.total = len(files.index)
+        self.pbar = pbar
 
     def run(self):
-        print('Starting {}'.format(self.name))
+        # print('Starting {}'.format(self.name))
         self.read_emails()
-        print('Stopping {}'.format(self.name))
+        # print('Stopping {}'.format(self.name))
 
     def read_emails(self):
         for index, row in self.files.iterrows():
-            print(row['email_path'])
+            self.progress += 1
+            self.pbar.update(1)
             try:
-                self.files.at[index, 'text'] = extract_email_from_file(
-                    os.path.join(base_dir, row['email_path']))
-            except:
+                email_path = path.join(
+                    dataset_path, index_path, '..', row['email_path'])
+                email_path = path.abspath(email_path)
+                self.files.at[index, 'text'] = get_email_body_from_path(
+                    email_path)
+            except Exception as e:
+                print('Failed to read {}: {}'.format(row['email_path'], e))
                 self.files.at[index, 'text'] = ''
                 continue
 
@@ -64,17 +78,16 @@ class emailParseThread(threading.Thread):
             self.name.exit()
 
 
-def extract_email_from_file(email_file):
-    mail = mailparser.parse_from_file(email_file)
-    return cleanhtml(mail.body).replace('\n', ' ').strip()
+def get_email_body_from_path(email_path):
+    email_body = parse_from_file(email_path).body
+    email_body = cleanhtml(email_body).replace('\n', ' ').strip()
+    return email_body
 
 
 # https://stackoverflow.com/questions/9662346/python-code-to-remove-html-tags-from-a-string
 def cleanhtml(raw_html):
-    cleanr = re.compile('<.*?>')
-    cleantext = re.sub(cleanr, '', raw_html)
-    return cleantext
+    return re.sub(_cleanr, '', raw_html)
 
 
 if __name__ == '__main__':
-    preprocess(os.path.join(dataset_path, index_path))
+    preprocess(path.join(dataset_path, index_path))
