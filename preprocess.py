@@ -1,12 +1,16 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
-from mailparser import parse_from_file
+# from mailparser import parse_from_file
 from os import path, stat
 from threading import Thread
-from time import sleep, time
+from time import gmtime, sleep, strftime, time
+# from time import time
 from tqdm import tqdm
+import email
+import logging
 import lxml
 import numpy as np
+import nltk
 import pandas as pd
 import re
 import string
@@ -21,6 +25,9 @@ csv_path = 'processed-{}.csv'.format(
 _cleanr = re.compile('<.*?>')
 
 total_file_size = 0
+dropped_files = 0
+dropped_empty = 0
+dropped_exception = 0
 
 
 def preprocess(index):
@@ -29,11 +36,17 @@ def preprocess(index):
     files['is_spam'] = files['is_spam'].map({'spam': 1, 'ham': 0})
     files['text'] = ''
 
+    total_file_num = len(files.index)
+
     results = _parallel_preprocess(files, 8)
     results.to_csv(path.join(dataset_path, csv_path))
 
-    print('Preprocessing took {} seconds for {} files ({} bytes)'.format(
-        time() - time_start, len(files.index), human_size(total_file_size)))
+    time_end = time()
+    time_taken = strftime('%H:%M:%S', gmtime(time_end - time_start))
+    print('Preprocessing took {} for {} files ({})'.format(
+        time_taken, total_file_num, human_size(total_file_size)))
+    print('Dropped {} (0:.2%) files ({} empty string, {} exceptions)'.format(
+        dropped_files, dropped_files / total_file_num, dropped_empty, dropped_exception))
 
 
 def _parallel_preprocess(files, num_threads=2):
@@ -41,7 +54,7 @@ def _parallel_preprocess(files, num_threads=2):
     thread_results = []
     total_files_num = len(files.index)
 
-    with tqdm(total=total_files_num, unit='files') as pbar:
+    with tqdm(total=total_files_num, unit='files', dynamic_ncols=True) as pbar:
         split_files = np.array_split(files, num_threads)
         for i in range(num_threads):
             new_thread = emailParseThread(
@@ -71,39 +84,90 @@ class emailParseThread(Thread):
 
     def read_emails(self):
         global total_file_size
+        global dropped_files
+        global dropped_empty
+        global dropped_exception
         for index, row in self.files.iterrows():
+            # tqdm.write('Reading {}'.format(row['email_path']))
             try:
                 email_path = path.join(
                     dataset_path, index_path, '..', row['email_path'])
                 email_path = path.abspath(email_path)
                 total_file_size += stat(email_path).st_size
-                email_body = parse_from_file(email_path).body
-                email_body = clean_html(email_body).replace('\n', ' ').strip()
-                self.files.at[index, 'text'] = email_body
+                email_body = preprocess_text(
+                    get_email_body_from_file(email_path))
+                if not email_body:
+                    # String is empty wtf
+                    # tqdm.write('String at {} is empty, dropping'.format(row['email_path']))
+                    dropped_files += 1
+                    dropped_empty += 1
+                    self.files.drop([index])
+                else:
+                    self.files.at[index, 'text'] = email_body
                 self.pbar.update(1)
             except Exception as e:
-                print('Exception at {}: {}'.format(row['email_path'], e))
-                sleep(1)
-                self.files.at[index, 'text'] = ''
+                tqdm.write('Exception at {}'.format(row['email_path']))
+                logging.exception('message')
+                # self.files.at[index, 'text'] = ''
+                dropped_files += 1
+                dropped_exception += 1
+                self.files.drop([index])
                 self.pbar.update(1)
+                tqdm.write('Deleted row {}'.format(row['email_path']))
+                sleep(10)
                 continue
 
         if exit_flag:
             self.name.exit()
 
 
-# https://stackoverflow.com/questions/9662346/python-code-to-remove-html-tags-from-a-string
-# Needs 4.5gb download lol: https://rushter.com/blog/python-fast-html-parser/
-def clean_html(html):
-    # return re.sub(_cleanr, '', html)
-    return BeautifulSoup(html, 'lxml').text
+def get_email_body_from_file(email_path):
+    # return parse_from_file(email_path).body
+
+    a = ''
+
+    with open(email_path, 'r', encoding='utf-8', errors='ignore') as f:
+        a = f.read()
+
+    # https://stackoverflow.com/a/36598450/3256255
+    # a = a.encode('ascii', errors='ignore')
+
+    # https://stackoverflow.com/a/32840516/3256255
+    if isinstance(a, str):
+        b = email.message_from_string(a)
+    else:
+        b = email.message_from_bytes(a)
+    body = ''
+
+    if b.is_multipart():
+        for part in b.walk():
+            ctype = part.get_content_type()
+            cdispo = str(part.get('Content-Disposition'))
+
+            # skip any text/plain (txt) attachments
+            if ctype == 'text/plain' and 'attachment' not in cdispo:
+                body = part.get_payload(decode=True)  # decode
+                break
+    # not multipart - i.e. plain text, no attachments, keeping fingers crossed
+    else:
+        body = b.get_payload(decode=True)
+
+    return body
 
 
 def preprocess_text(text):
-    # Remove punctuation
-    # https://stackoverflow.com/questions/265960/best-way-to-strip-punctuation-from-a-string-in-python
-    text = text.translate(None, string.punctuation)
+    # Remove html tags and all line breaks
+    text = clean_html(text).replace('\n', ' ').replace('\r', '').strip()
+
+    # Return
     return text
+
+
+def clean_html(html):
+    # return re.sub(_cleanr, '', html) # Less safe
+
+    # lxml for speed, unsure for consequences
+    return BeautifulSoup(html, 'lxml').text
 
 
 # https://stackoverflow.com/a/43750422/3256255
