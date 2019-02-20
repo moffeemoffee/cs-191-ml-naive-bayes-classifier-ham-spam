@@ -46,8 +46,7 @@ def preprocess(index):
 def read_data(index):
     time_start = time()
 
-    files = pd.read_csv(index, sep=' ', names=[
-                        'is_spam', 'email_path'])
+    files = pd.read_csv(index, sep=' ', names=['is_spam', 'email_path'])
     files['is_spam'] = files['is_spam'].map({'spam': 1, 'ham': 0})
     files['words'] = ''
 
