@@ -1,13 +1,11 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 from mailparser import parse_from_file
-from math import floor
 from nltk.corpus import stopwords, wordnet
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from time import gmtime, sleep, strftime, time
+from time import gmtime, strftime, time
 from tqdm import tqdm
-import concurrent.futures
 import contractions
 import logging
 import lxml
@@ -52,7 +50,6 @@ def read_data(index):
                         'is_spam', 'email_path'])
     files['is_spam'] = files['is_spam'].map({'spam': 1, 'ham': 0})
     files['words'] = ''
-    # files['counts'] = ''
 
     time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
     print('Reading took {} for {} files'.format(time_taken, files.shape[0]))
@@ -60,43 +57,22 @@ def read_data(index):
 
 
 def parallel_preprocess_func(d):
-    # global total_file_size
-    # global dropped_files
-    # global dropped_empty
-    # global dropped_exception
-
-    # tqdm.write('{} {}'.format(str(type(d)), str(d)))
-    # tqdm.write('{} {}'.format(str(type(row)), str(row)))
-
-    # tqdm.write('===')
-    # for x in d:
-    #     tqdm.write('{} {}'.format(str(type(x)), str(x)))
-
-    index = d[0]
     row = d[1]
 
     try:
         email_path = os.path.join(
             dataset_path, index_path, '..', row['email_path'])
         email_path = os.path.abspath(email_path)
-        # total_file_size += os.stat(email_path).st_size
         email_body = preprocess_text(get_email_body_from_file(email_path))
         if not email_body:
             # tqdm.write('\nString at [{}]{} is empty'.format(index, row['email_path']))
-            # dropped_files += 1
-            # dropped_empty += 1
-            # d.drop(index, inplace=True)
             row = None
         else:
             email_words = preprocess_text_tokenize(email_body)
-            # d.at[index, 'words'] = email_words
             row['words'] = email_words
     except Exception as e:
         tqdm.write('Exception at {}'.format(row['email_path']))
         logging.exception('message')
-        # dropped_files += 1
-        # dropped_exception += 1
-        # d.drop(index, inplace=True)
         row = None
 
     return row
@@ -207,8 +183,9 @@ def after_preprocess_clean(data):
     cleaned_data = [x for x in data if x is not None]
 
     time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
-    print('After-preprocess cleaning took {} for {} rows ({} left)'.format(time_taken,
-                                                                           len(data), len(cleaned_data)))
+    num_cleaned = len(cleaned_data) - len(data)
+    print('After-preprocess cleaning took {} for {} rows ({} cleaned ({:.0%}), {} left)'.format(
+        time_taken, len(data), num_cleaned, num_cleaned / len(data), len(cleaned_data)))
     return cleaned_data
 
 
