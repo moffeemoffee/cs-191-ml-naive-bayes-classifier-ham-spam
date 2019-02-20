@@ -26,12 +26,6 @@ index_path = 'full/index'
 csv_path = 'processed-{}.csv'.format(
     datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-total_file_num = 0
-total_file_size = 0
-dropped_files = 0
-dropped_empty = 0
-dropped_exception = 0
-
 punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
 
 cached_stopwords = stopwords.words('english')
@@ -40,12 +34,6 @@ lemmatizer = WordNetLemmatizer()
 
 
 def preprocess(index):
-    global total_file_num
-    global total_file_size
-    global dropped_files
-    global dropped_empty
-    global dropped_exception
-
     files = read_data(index)
 
     results = parallel_preprocess(files)
