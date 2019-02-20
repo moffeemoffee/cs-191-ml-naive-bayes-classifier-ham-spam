@@ -1,19 +1,20 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
-# from mailparser import parse_from_file
+from mailparser import parse_from_file
+from math import floor
 from nltk.corpus import stopwords, wordnet
 from nltk.stem import WordNetLemmatizer
-from os import path, stat
-from threading import Thread
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from time import gmtime, sleep, strftime, time
-# from time import time
 from tqdm import tqdm
+import concurrent.futures
 import contractions
-import email
 import logging
 import lxml
+import multiprocessing
 import numpy as np
 import nltk
+import os
 import pandas as pd
 import re
 import string
@@ -25,155 +26,158 @@ index_path = 'full/index'
 csv_path = 'processed-{}.csv'.format(
     datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
-cached_stopwords = stopwords.words('english')
-wordnet_lemmatizer = WordNetLemmatizer()
-
+total_file_num = 0
 total_file_size = 0
 dropped_files = 0
 dropped_empty = 0
 dropped_exception = 0
 
+punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
+
+cached_stopwords = stopwords.words('english')
+
+lemmatizer = WordNetLemmatizer()
+
 
 def preprocess(index):
+    global total_file_num
+    global total_file_size
+    global dropped_files
+    global dropped_empty
+    global dropped_exception
+
+    files = read_data(index)
+
+    results = parallel_preprocess(files)
+    results = after_preprocess_clean(results)
+    results = pd.DataFrame(results)
+
+    results.to_csv(os.path.join(dataset_path, csv_path))
+
+    return results
+
+
+def read_data(index):
     time_start = time()
-    files = pd.read_csv(index, sep=' ', names=['is_spam', 'email_path'])
+
+    files = pd.read_csv(index, sep=' ', names=[
+                        'is_spam', 'email_path'])
     files['is_spam'] = files['is_spam'].map({'spam': 1, 'ham': 0})
-    files['text'] = ''
+    files['words'] = ''
+    # files['counts'] = ''
 
-    total_file_num = len(files.index)
-
-    results = _parallel_preprocess(files, 8)
-    results.to_csv(path.join(dataset_path, csv_path))
-
-    time_end = time()
-    time_taken = strftime('%H:%M:%S', gmtime(time_end - time_start))
-    print('Preprocessing took {} for {} files ({})'.format(
-        time_taken, total_file_num, human_size(total_file_size)))
-    print('Dropped {} (0:.2%) files ({} empty string, {} exceptions)'.format(
-        dropped_files, dropped_files / total_file_num, dropped_empty, dropped_exception))
+    time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
+    print('Reading took {} for {} files'.format(time_taken, files.shape[0]))
+    return files
 
 
-def _parallel_preprocess(files, num_threads=2):
-    threads = []
-    thread_results = []
-    total_files_num = len(files.index)
+def parallel_preprocess_func(d):
+    # global total_file_size
+    # global dropped_files
+    # global dropped_empty
+    # global dropped_exception
 
-    with tqdm(total=total_files_num, unit='files', dynamic_ncols=True) as pbar:
-        # idk if this should be here
-        tqdm.write('Waiting for WordNet to load...')
-        wordnet.ensure_loaded()
+    # tqdm.write('{} {}'.format(str(type(d)), str(d)))
+    # tqdm.write('{} {}'.format(str(type(row)), str(row)))
 
-        # Split data, then multi-thread
-        split_files = np.array_split(files, num_threads)
-        for i in range(num_threads):
-            new_thread = emailParseThread(
-                i, 'emailParseThread{}'.format(i), split_files[i], pbar)
-            threads.append(new_thread)
-            new_thread.start()
+    # tqdm.write('===')
+    # for x in d:
+    #     tqdm.write('{} {}'.format(str(type(x)), str(x)))
 
-        # Wait for threads to finish, then append their results
-        for thread in threads:
-            thread.join()
-            thread_results.append(thread.files)
+    index = d[0]
+    row = d[1]
 
-    return pd.concat(thread_results)
+    try:
+        email_path = os.path.join(
+            dataset_path, index_path, '..', row['email_path'])
+        email_path = os.path.abspath(email_path)
+        # total_file_size += os.stat(email_path).st_size
+        email_body = preprocess_text(get_email_body_from_file(email_path))
+        if not email_body:
+            # tqdm.write('\nString at [{}]{} is empty'.format(index, row['email_path']))
+            # dropped_files += 1
+            # dropped_empty += 1
+            # d.drop(index, inplace=True)
+            row = None
+        else:
+            email_words = preprocess_text_tokenize(email_body)
+            # d.at[index, 'words'] = email_words
+            row['words'] = email_words
+    except Exception as e:
+        tqdm.write('Exception at {}'.format(row['email_path']))
+        logging.exception('message')
+        # dropped_files += 1
+        # dropped_exception += 1
+        # d.drop(index, inplace=True)
+        row = None
+
+    return row
 
 
-class emailParseThread(Thread):
-    def __init__(self, thread_id, name, files, pbar):
-        Thread.__init__(self)
-        self.thread_id = thread_id
-        self.name = name
-        self.files = files
-        self.pbar = pbar
+def parallel_preprocess(df, num_processes=None):
+    time_start = time()
 
-    def run(self):
-        # print('Starting {}'.format(self.name))
-        self.read_emails()
-        # print('Stopping {}'.format(self.name))
+    if num_processes is None:
+        num_processes = multiprocessing.cpu_count()
 
-    def read_emails(self):
-        global total_file_size
-        global dropped_files
-        global dropped_empty
-        global dropped_exception
-        for index, row in self.files.iterrows():
-            # tqdm.write('Reading {}'.format(row['email_path']))
-            try:
-                email_path = path.join(
-                    dataset_path, index_path, '..', row['email_path'])
-                email_path = path.abspath(email_path)
-                total_file_size += stat(email_path).st_size
-                email_body = preprocess_text(
-                    get_email_body_from_file(email_path))
-                if not email_body:
-                    # String is empty wtf
-                    # tqdm.write('String at {} is empty, dropping'.format(row['email_path']))
-                    dropped_files += 1
-                    dropped_empty += 1
-                    self.files.drop([index])
-                else:
-                    email_words = preprocess_text_tokenize(
-                        email_body, wordnet_lemmatizer)
-                    self.files.at[index, 'text'] = email_words
-                self.pbar.update(1)
-            except Exception as e:
-                tqdm.write('Exception at {}'.format(row['email_path']))
-                logging.exception('message')
-                # self.files.at[index, 'text'] = ''
-                dropped_files += 1
-                dropped_exception += 1
-                self.files.drop([index])
-                self.pbar.update(1)
-                tqdm.write('Deleted row {}'.format(row['email_path']))
-                sleep(10)
-                continue
+    # print(df)
 
-        if exit_flag:
-            self.name.exit()
+    # https://www.tjansson.dk/2018/04/parallel-processing-pandas-dataframes/
+    with multiprocessing.Pool(num_processes) as pool:
+        results = list(
+            tqdm(pool.imap(parallel_preprocess_func, df.iterrows()),
+                 total=df.shape[0],
+                 unit='files',
+                 dynamic_ncols=True))
+
+    time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
+    print('Preprocessing took {} for {} files'.format(time_taken, df.shape[0]))
+    # print('Preprocessing took {} for {} files ({})'.format(time_taken, df.shape[0], human_size(total_file_size)))
+    # print('Dropped {} ({:.2%}) files ({} empty string, {} exceptions)'.format(dropped_files, dropped_files / total_file_num, dropped_empty, dropped_exception))
+
+    return results
 
 
 def get_email_body_from_file(email_path):
-    # return parse_from_file(email_path).body
+    return parse_from_file(email_path).body
 
-    a = ''
+    # a = ''
 
-    with open(email_path, 'r', encoding='utf-8', errors='ignore') as f:
-        a = f.read()
+    # with open(email_path, 'r', encoding='utf-8', errors='ignore') as f:
+    #     a = f.read()
 
-    # https://stackoverflow.com/a/36598450/3256255
-    # a = a.encode('ascii', errors='ignore')
+    # # https://stackoverflow.com/a/36598450/3256255
+    # # a = a.encode('ascii', errors='ignore')
 
-    # https://stackoverflow.com/a/32840516/3256255
-    if isinstance(a, str):
-        b = email.message_from_string(a)
-    else:
-        b = email.message_from_bytes(a)
-    body = ''
+    # # https://stackoverflow.com/a/32840516/3256255
+    # if isinstance(a, str):
+    #     b = email.message_from_string(a)
+    # else:
+    #     b = email.message_from_bytes(a)
+    # body = ''
 
-    if b.is_multipart():
-        for part in b.walk():
-            ctype = part.get_content_type()
-            cdispo = str(part.get('Content-Disposition'))
+    # if b.is_multipart():
+    #     for part in b.walk():
+    #         ctype = part.get_content_type()
+    #         cdispo = str(part.get('Content-Disposition'))
 
-            # skip any text/plain (txt) attachments
-            if ctype == 'text/plain' and 'attachment' not in cdispo:
-                body = part.get_payload(decode=True)  # decode
-                break
-    # not multipart - i.e. plain text, no attachments, keeping fingers crossed
-    else:
-        body = b.get_payload(decode=True)
+    #         # skip any text/plain (txt) attachments
+    #         if ctype == 'text/plain' and 'attachment' not in cdispo:
+    #             body = part.get_payload(decode=True)  # decode
+    #             break
+    # # not multipart - i.e. plain text, no attachments, keeping fingers crossed
+    # else:
+    #     body = b.get_payload(decode=True)
 
-    return body
+    # return body
 
 
 def preprocess_text(text):
-    # Remove html tags and all line breaks, also extra whitespace
-    text = strip_html(text).replace('\n', ' ').replace('\r', '').strip()
-
     # Convert to lowercase
     text = text.lower()
+
+    # Remove html tags and all line breaks, also extra whitespace
+    text = strip_html(text).replace('\n', ' ').replace('\r', '').strip()
 
     # Expand contractions
     text = contractions.fix(text)
@@ -191,7 +195,7 @@ def strip_html(html):
     return BeautifulSoup(html, 'lxml').text
 
 
-def preprocess_text_tokenize(text, lemmatizer):
+def preprocess_text_tokenize(text):
     # Tokenize
     words = nltk.word_tokenize(text)
 
@@ -209,6 +213,17 @@ def preprocess_text_tokenize(text, lemmatizer):
     return words
 
 
+def after_preprocess_clean(data):
+    time_start = time()
+
+    cleaned_data = [x for x in data if x is not None]
+
+    time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
+    print('After-preprocess cleaning took {} for {} rows ({} left)'.format(time_taken,
+                                                                           len(data), len(cleaned_data)))
+    return cleaned_data
+
+
 # https://stackoverflow.com/a/43750422/3256255
 def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
     """ Returns a human readable string reprentation of bytes"""
@@ -216,4 +231,4 @@ def human_size(bytes, units=[' bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB']):
 
 
 if __name__ == '__main__':
-    preprocess(path.join(dataset_path, index_path))
+    preprocess(os.path.join(dataset_path, index_path))
