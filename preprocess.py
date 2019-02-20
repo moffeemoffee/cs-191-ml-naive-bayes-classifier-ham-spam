@@ -1,11 +1,14 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 # from mailparser import parse_from_file
+from nltk.corpus import stopwords, wordnet
+from nltk.stem import WordNetLemmatizer
 from os import path, stat
 from threading import Thread
 from time import gmtime, sleep, strftime, time
 # from time import time
 from tqdm import tqdm
+import contractions
 import email
 import logging
 import lxml
@@ -22,7 +25,9 @@ index_path = 'full/index'
 csv_path = 'processed-{}.csv'.format(
     datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-_cleanr = re.compile('<.*?>')
+punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
+cached_stopwords = stopwords.words('english')
+wordnet_lemmatizer = WordNetLemmatizer()
 
 total_file_size = 0
 dropped_files = 0
@@ -55,6 +60,11 @@ def _parallel_preprocess(files, num_threads=2):
     total_files_num = len(files.index)
 
     with tqdm(total=total_files_num, unit='files', dynamic_ncols=True) as pbar:
+        # idk if this should be here
+        tqdm.write('Waiting for WordNet to load...')
+        wordnet.ensure_loaded()
+
+        # Split data, then multi-thread
         split_files = np.array_split(files, num_threads)
         for i in range(num_threads):
             new_thread = emailParseThread(
@@ -62,6 +72,7 @@ def _parallel_preprocess(files, num_threads=2):
             threads.append(new_thread)
             new_thread.start()
 
+        # Wait for threads to finish, then append their results
         for thread in threads:
             thread.join()
             thread_results.append(thread.files)
@@ -103,7 +114,9 @@ class emailParseThread(Thread):
                     dropped_empty += 1
                     self.files.drop([index])
                 else:
-                    self.files.at[index, 'text'] = email_body
+                    email_words = preprocess_text_tokenize(
+                        email_body, wordnet_lemmatizer)
+                    self.files.at[index, 'text'] = email_words
                 self.pbar.update(1)
             except Exception as e:
                 tqdm.write('Exception at {}'.format(row['email_path']))
@@ -156,18 +169,44 @@ def get_email_body_from_file(email_path):
 
 
 def preprocess_text(text):
-    # Remove html tags and all line breaks
-    text = clean_html(text).replace('\n', ' ').replace('\r', '').strip()
+    # Remove html tags and all line breaks, also extra whitespace
+    text = strip_html(text).replace('\n', ' ').replace('\r', '').strip()
+
+    # Convert to lowercase
+    text = text.lower()
+
+    # Expand contractions
+    text = contractions.fix(text)
+
+    # Remove all punctuation
+    # https://stackoverflow.com/a/266162/3256255
+    text = punc_regex.sub('', text)
 
     # Return
     return text
 
 
-def clean_html(html):
-    # return re.sub(_cleanr, '', html) # Less safe
-
+def strip_html(html):
     # lxml for speed, unsure for consequences
     return BeautifulSoup(html, 'lxml').text
+
+
+def preprocess_text_tokenize(text, lemmatizer):
+    # Tokenize
+    words = nltk.word_tokenize(text)
+
+    for index, word in enumerate(words):
+        # Remove stop words
+        if word in cached_stopwords:
+            words.pop(index)
+        # Remove numbers
+        elif word.isdigit():
+            words.pop(index)
+        # Lemmazation
+        else:
+            words[index] = lemmatizer.lemmatize(word)
+
+    return words
 
 
 # https://stackoverflow.com/a/43750422/3256255
