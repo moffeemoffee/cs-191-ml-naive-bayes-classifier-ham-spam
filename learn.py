@@ -1,6 +1,6 @@
 from sklearn import metrics
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from sklearn.feature_selection import chi2, f_classif, mutual_info_classif, SelectKBest
+from sklearn.feature_selection import chi2, SelectKBest
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
@@ -42,7 +42,7 @@ def learn_reduced(X_train, y_train):
     laplace_model = Pipeline([
         ('vect', CountVectorizer(strip_accents='ascii')),
         ('tfidf', TfidfTransformer()),
-        ('reducer', SelectKBest(mutual_info_classif, k=200)),
+        ('reducer', SelectKBest(chi2, k=200)),
         ('clf', MultinomialNB(alpha=1))
     ])
     laplace_model.fit(X_train, y_train)
