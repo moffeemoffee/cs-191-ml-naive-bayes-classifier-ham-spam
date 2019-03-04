@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 from datetime import datetime
 from mailparser import parse_from_file
-from nltk.corpus import stopwords, wordnet
+from nltk.corpus import stopwords, wordnet, words
 from nltk.stem import WordNetLemmatizer
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from time import gmtime, strftime, time
@@ -16,6 +16,7 @@ import os
 import pandas as pd
 import re
 import string
+import unicodedata
 
 exit_flag = 0
 
@@ -24,8 +25,10 @@ index_path = 'full/index'
 csv_path = 'processed-{}.csv'.format(
     datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
 
-punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
+# punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
+spec_char_regex = re.compile('[^a-zA-Z\s]')
 
+# cached_eng_words = set(words.words())
 cached_stopwords = stopwords.words('english')
 
 lemmatizer = WordNetLemmatizer()
@@ -48,7 +51,7 @@ def read_data(index):
 
     files = pd.read_csv(index, sep=' ', names=['is_spam', 'email_path'])
     files['is_spam'] = files['is_spam'].map({'spam': 1, 'ham': 0})
-    files['words'] = ''
+    files['text'] = ''
 
     time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
     print('Reading took {} for {} files'.format(time_taken, files.shape[0]))
@@ -62,13 +65,13 @@ def parallel_preprocess_func(d):
         email_path = os.path.join(
             dataset_path, index_path, '..', row['email_path'])
         email_path = os.path.abspath(email_path)
-        email_body = preprocess_text(get_email_body_from_file(email_path))
+        email_body = ' '.join(preprocess_text(
+            get_email_body_from_file(email_path)))
         if not email_body:
             # tqdm.write('\nString at [{}]{} is empty'.format(index, row['email_path']))
             row = None
         else:
-            email_words = preprocess_text_tokenize(email_body)
-            row['words'] = email_words
+            row['text'] = email_body
     except Exception as e:
         tqdm.write('Exception at {}'.format(row['email_path']))
         logging.exception('message')
@@ -142,38 +145,38 @@ def preprocess_text(text):
     # Remove html tags and all line breaks, also extra whitespace
     text = strip_html(text).replace('\n', ' ').replace('\r', '').strip()
 
+    # Remove accents
+    text = unicodedata.normalize('NFKD', text).encode(
+        'ascii', 'ignore').decode('utf-8', 'ignore')
+
     # Expand contractions
     text = contractions.fix(text)
 
     # Remove all punctuation
     # https://stackoverflow.com/a/266162/3256255
-    text = punc_regex.sub('', text)
+    # text = punc_regex.sub(' ', text)
+
+    # Instead: Remove special characters
+    # https://www.kdnuggets.com/2018/08/practitioners-guide-processing-understanding-text-2.html
+    text = spec_char_regex.sub('', text)
+
+    # Lemmatization + remove stop words
+    words = nltk.word_tokenize(text)
+    words = [lemmatizer.lemmatize(word)
+             for word in words if word not in cached_stopwords]
+    # for index, word in enumerate(words):
+    #     words[index] = lemmatizer.lemmatize(word)
+    #     # Remove stop words
+    #     if word in cached_stopwords:
+    #         words.pop(index)
 
     # Return
-    return text
+    return words
 
 
 def strip_html(html):
-    # lxml for speed, unsure for consequences
+    # Why lxml? https://stackoverflow.com/a/45494776/3256255
     return BeautifulSoup(html, 'lxml').text
-
-
-def preprocess_text_tokenize(text):
-    # Tokenize
-    words = nltk.word_tokenize(text)
-
-    for index, word in enumerate(words):
-        # Remove stop words
-        if word in cached_stopwords:
-            words.pop(index)
-        # Remove numbers
-        elif word.isdigit():
-            words.pop(index)
-        # Lemmazation
-        else:
-            words[index] = lemmatizer.lemmatize(word)
-
-    return words
 
 
 def after_preprocess_clean(data):
@@ -182,9 +185,9 @@ def after_preprocess_clean(data):
     cleaned_data = [x for x in data if x is not None]
 
     time_taken = strftime('%H:%M:%S', gmtime(time() - time_start))
-    num_cleaned = len(cleaned_data) - len(data)
+    num_removed = len(data) - len(cleaned_data)
     print('After-preprocess cleaning took {} for {} rows ({} cleaned ({:.0%}), {} left)'.format(
-        time_taken, len(data), num_cleaned, num_cleaned / len(data), len(cleaned_data)))
+        time_taken, len(data), num_removed, num_removed / len(data), len(cleaned_data)))
     return cleaned_data
 
 
