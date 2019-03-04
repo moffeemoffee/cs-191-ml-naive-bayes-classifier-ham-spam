@@ -4,7 +4,6 @@ from sklearn.feature_extraction.text import CountVectorizer
 from time import gmtime, strftime, time
 from tqdm import tqdm
 import math
-import multiprocessing as mp
 import numpy as np
 
 

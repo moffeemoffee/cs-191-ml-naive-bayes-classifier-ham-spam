@@ -15,7 +15,6 @@ import nltk
 import os
 import pandas as pd
 import re
-import string
 import unicodedata
 
 exit_flag = 0
