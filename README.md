@@ -33,12 +33,14 @@ pip install -r requirements.txt
 
 ## Usage
 
-First, generate the `processed.csv` if needed:
-```
-python preprocess.py
-```
-
-Then, run `train.py` on the generated `processed.csv`:
+Run `train.py`, it uses `processed.csv`:
 ```
 python train.py
+```
+
+Example usage of `NaiveBayes` from `naivebayes.py` can be seen in `train.py` as well.
+
+Also, you can generate a new `processed.csv` if you want with `preprocess.py`:
+```
+python preprocess.py
 ```
