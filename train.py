@@ -19,13 +19,14 @@ if __name__ == '__main__':
         df['text'], df['is_spam'], test_size=0.2, random_state=191)
 
     # Build Classifier
-    gvoc_model = NaiveBayes(X_train, y_train, targets, target_names)
+    gvoc_model = NaiveBayes('General Vocabulary', X_train,
+                            y_train, targets, target_names)
     gvoc_model.train()
 
-    gvoc_model.evaluate('General Vocabulary', X_test, y_test)
+    gvoc_model.evaluate(X_test, y_test, show_top_features=10)
 
-    rvoc_model = NaiveBayes(X_train, y_train, targets,
+    rvoc_model = NaiveBayes('Reduced Vocabulary', X_train, y_train, targets,
                             target_names, max_features=200)
     rvoc_model.train()
 
-    rvoc_model.evaluate('Reduced Vocabulary', X_test, y_test)
+    rvoc_model.evaluate(X_test, y_test, show_top_features=10)

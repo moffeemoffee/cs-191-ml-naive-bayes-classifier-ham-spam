@@ -17,11 +17,13 @@ def get_feature_prob_laplace(feat_count, class_total_counts, feat_number):
 
 class NaiveBayes:
 
-    def __init__(self, X_train, y_train, targets, target_names, max_features=None):
+    def __init__(self, name, X_train, y_train, targets, target_names, max_features=None):
+        self.name = name
         self.X_train = X_train
         self.y_train = y_train
         self.targets = targets
         self.target_names = target_names
+        self.max_target_name_len = len(max(target_names, key=len))
         self.max_features = max_features
 
         # Data to be assigned later
@@ -32,13 +34,15 @@ class NaiveBayes:
     def train(self, num_processes=None):
         time_start = time()
 
-        print('Training...')
+        print('Training {}...'.format(self.name))
 
         self.total_counts = 0
+        # TODO: Use get_feature_names() instead on each CountVectorizer and append to
+        # a set, and get the count
         self.feat_number = CountVectorizer(max_features=self.max_features).fit_transform(
             self.X_train).sum(axis=0).shape[1]
 
-        for t in tqdm(self.targets):
+        for t in tqdm(self.targets, unit='class'):
             X_train_target = [x for x, y in zip(
                 self.X_train, self.y_train) if y == t]
 
@@ -60,7 +64,12 @@ class NaiveBayes:
             t_data = self.target_data[t]
             t_data['likelihood'] = {}
             t_data['lap_likelihood'] = {}
-            for word, idx in t_data['vec'].vocabulary_.items():
+            tqdm_desc = '{:{width}} Likelihood'.format(
+                t_name, width=self.max_target_name_len)
+            tqdm_list = tqdm(t_data['vec'].vocabulary_.items(),
+                             desc=tqdm_desc,
+                             unit='word')
+            for word, idx in tqdm_list:
                 prob = get_feature_prob(t_data['bow'][0, idx],
                                         t_data['bow_count'])
                 lap_prob = get_feature_prob_laplace(t_data['bow'][0, idx],
@@ -98,14 +107,15 @@ class NaiveBayes:
 
     # Uses smoothing
     def predict(self, X_test):
-        print('Testing..')
+        print('Testing {}...'.format(self.name))
         predicted = []
         lap_predicted = []
 
         smooth_probs = [math.log(1/(t_data['doc_count'] + len(self.X_train)))
                         for t, t_data in self.target_data.items()]
 
-        for test_case in tqdm(X_test):
+        # TODO: multiprocessing
+        for test_case in tqdm(X_test, unit='test'):
             target_sums = [self.target_data[t]['prior']
                            for t in self.targets]
             lap_target_sums = [self.target_data[t]['prior']
@@ -131,15 +141,72 @@ class NaiveBayes:
 
         return predicted, lap_predicted
 
-    def evaluate(self, model_name, X_test, y_test):
+    def _evaluate(self, label, predicted, y_test):
+        print(label)
+        print('Accuracy: {:.05%}'.format(np.mean(predicted == y_test)))
+        print(metrics.classification_report(y_test,
+                                            predicted,
+                                            target_names=self.target_names))
+
+    def evaluate(self, X_test, y_test, show_top_features=False):
         predicted, lap_predicted = self.predict(X_test)
 
-        print('{} Without Laplace Smoothing'.format(model_name))
-        print('Accuracy: {:.05%}'.format(np.mean(predicted == y_test)))
-        print(metrics.classification_report(
-            y_test, predicted, target_names=self.target_names))
+        self._evaluate('\n{} Without Laplace Smoothing'.format(self.name),
+                       predicted, y_test)
+        self._evaluate('{} With Laplace Smoothing'.format(self.name),
+                       lap_predicted, y_test)
 
-        print('{} With Laplace Smoothing'.format(model_name))
-        print('Accuracy: {:.05%}'.format(np.mean(lap_predicted == y_test)))
-        print(metrics.classification_report(
-            y_test, lap_predicted, target_names=self.target_names))
+        if show_top_features is True:
+            show_top_features = 10
+        if isinstance(show_top_features, int) and show_top_features > 0:
+            fancy_table = {}
+            max_lengths = {}
+            for t_name, t_data_idx in zip(self.target_names, self.target_data):
+                max_len = {'word': 0, 'count': 0}
+
+                t_data = self.target_data[t_data_idx]
+
+                t_words = [(word, t_data['bow'][0, idx])
+                           for word, idx in t_data['vec'].vocabulary_.items()]
+
+                # Descending sort, obtain only the top <show_top_features>
+                t_words = sorted(t_words,
+                                 key=lambda x: x[1],
+                                 reverse=True)[:show_top_features]
+
+                for t_tup in t_words:
+                    word = t_tup[0]
+                    count = t_tup[1]
+                    word_len = len(str(word))
+                    count_len = len(str(count))
+                    if word_len > max_len['word']:
+                        max_len['word'] = word_len
+                    if count_len > max_len['count']:
+                        max_len['count'] = count_len
+
+                fancy_table[t_name] = t_words
+                max_lengths[t_name] = max_len
+
+            # Print headers
+            print('Top {} words:'.format(show_top_features))
+
+            for t_name in fancy_table:
+                w_width = max_lengths[t_name]['word']
+                c_width = max_lengths[t_name]['count']
+                print('{} {:{w_width}}'.format(
+                    ' ' * c_width,
+                    t_name,
+                    w_width=w_width + 1), end='| ')
+            print('')
+
+            # Print contents
+            for i in range(show_top_features):
+                for t_name, t_words in fancy_table.items():
+                    word = t_words[i][0]
+                    count = t_words[i][1]
+                    print('{c:>{c_width}} {w:{w_width}} '.format(
+                        w=word, c=count,
+                        w_width=max_lengths[t_name]['word'],
+                        c_width=max_lengths[t_name]['count']), end='| ')
+                print('')
+            print('')
