@@ -4,13 +4,11 @@ import os
 import numpy as np
 import pandas as pd
 
-dataset_path = 'dataset/trec07p/'
-csv_path = 'processed-2019-03-03-18-29-36.csv'
+csv_path = 'processed.csv'
 
 if __name__ == '__main__':
     # Read file
-    df = pd.read_csv(os.path.join(dataset_path, csv_path),
-                     header=0, index_col=0)
+    df = pd.read_csv(os.path.join(csv_path), header=0, index_col=0)
 
     # Split data
     targets = np.int64([0, 1])

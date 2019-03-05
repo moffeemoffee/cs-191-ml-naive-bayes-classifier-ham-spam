@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-from datetime import datetime
 from mailparser import parse_from_file
 from nltk.corpus import stopwords, wordnet, words
 from nltk.stem import WordNetLemmatizer
@@ -21,8 +20,7 @@ exit_flag = 0
 
 dataset_path = 'dataset/trec07p/'
 index_path = 'full/index'
-csv_path = 'processed-{}.csv'.format(
-    datetime.now().strftime("%Y-%m-%d-%H-%M-%S"))
+csv_path = 'processed.csv'
 
 # punc_regex = re.compile('[%s]' % re.escape(string.punctuation))
 spec_char_regex = re.compile('[^a-zA-Z\s]')
@@ -40,7 +38,7 @@ def preprocess(index):
     results = after_preprocess_clean(results)
     results = pd.DataFrame(results)
 
-    results.to_csv(os.path.join(dataset_path, csv_path))
+    results.to_csv(os.path.join(csv_path))
 
     return results
 

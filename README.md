@@ -10,11 +10,16 @@
 |     ├── full
 |     ├── partial
 |     └── README.txt
+├── log.txt
+├── naivebayes.py
 ├── preprocess.py
-└── requirements.txt
+├── processed.csv
+├── README.md
+├── requirements.txt
+└── train.py
 ```
 
-Get the data set from https://plg.uwaterloo.ca/~gvcormac/treccorpus07/ and extract it
+Get the data set from https://plg.uwaterloo.ca/~gvcormac/treccorpus07/ and extract it into the dataset folder, following the provided structure.
 
 ## Pre-requisites
 
