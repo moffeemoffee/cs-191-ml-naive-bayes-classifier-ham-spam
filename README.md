@@ -30,3 +30,15 @@ Python 3.7.2 (un-tested on other versions)
 ```
 pip install -r requirements.txt
 ```
+
+## Usage
+
+First, generate the `processed.csv` if needed:
+```
+python preprocess.py
+```
+
+Then, run `train.py` on the generated `processed.csv`:
+```
+python train.py
+```
