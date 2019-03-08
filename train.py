@@ -16,6 +16,22 @@ if __name__ == '__main__':
     X_train, X_test, y_train, y_test = train_test_split(
         df['text'], df['is_spam'], test_size=0.2, random_state=191)
 
+    print('Data set:')
+    print('{} total'.format(df.shape[0]))
+    for t, t_name in zip(targets, target_names):
+        print('{} {}'.format(len(df[df['is_spam'] == t]), t_name))
+
+    print('\nTraining set:')
+    print('{} total'.format(len(X_train)))
+    for t, t_name in zip(targets, target_names):
+        print('{} {}'.format(sum([y == t for y in y_train]), t_name))
+
+    print('\nTest set:')
+    print('{} total'.format(len(X_test)))
+    for t, t_name in zip(targets, target_names):
+        print('{} {}'.format(sum([y == t for y in y_test]), t_name))
+    print('')
+
     # Build Classifier
     gvoc_model = NaiveBayes('General Vocabulary', X_train,
                             y_train, targets, target_names)

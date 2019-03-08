@@ -31,7 +31,7 @@ class NaiveBayes:
         self.total_counts = 0
         self.feat_number = 0
 
-    def train(self, num_processes=None):
+    def train(self):
         time_start = time()
 
         print('Training {}...'.format(self.name))
@@ -134,6 +134,7 @@ class NaiveBayes:
                             if t2 != t and word in t2_data['likelihood']:
                                 target_sums[t_idx] += smooth_probs[t_idx]
                                 lap_target_sums[t_idx] += smooth_probs[t_idx]
+                                break
 
             # Get biggest result
             predicted.append(self.targets[np.argmax(target_sums)])
@@ -210,3 +211,5 @@ class NaiveBayes:
                         c_width=max_lengths[t_name]['count']), end='| ')
                 print('')
             print('')
+
+        return predicted, lap_predicted

@@ -1,0 +1,104 @@
+Data set:
+73036 total
+24691 ham
+48345 spam
+
+Training set:
+58428 total
+19788 ham
+38640 spam
+
+Test set:
+14608 total
+4903 ham
+9705 spam
+
+Training General Vocabulary...
+100%|█████████████████████████████████████████████████████████████████████████████████| 2/2 [00:10<00:00,  4.64s/class]
+ham  Likelihood: 100%|████████████████████████████████████████████████████| 170627/170627 [00:02<00:00, 78642.92word/s]
+spam Likelihood: 100%|████████████████████████████████████████████████████| 192163/192163 [00:02<00:00, 74166.81word/s]
+Training complete with 327697 features (9798466 total counts)
+Training took 00:00:24.
+
+Testing General Vocabulary...
+100%|█████████████████████████████████████████████████████████████████████████| 14608/14608 [01:22<00:00, 176.28test/s]
+
+General Vocabulary Without Laplace Smoothing
+Accuracy: 89.95071%
+              precision    recall  f1-score   support
+
+         ham       0.78      0.98      0.87      4903
+        spam       0.99      0.86      0.92      9705
+
+   micro avg       0.90      0.90      0.90     14608
+   macro avg       0.88      0.92      0.89     14608
+weighted avg       0.92      0.90      0.90     14608
+
+General Vocabulary With Laplace Smoothing
+Accuracy: 90.40252%
+              precision    recall  f1-score   support
+
+         ham       0.79      0.98      0.87      4903
+        spam       0.99      0.87      0.92      9705
+
+   micro avg       0.90      0.90      0.90     14608
+   macro avg       0.89      0.92      0.90     14608
+weighted avg       0.92      0.90      0.91     14608
+
+Top 10 words:
+      ham     |       spam       |
+17759 list    | 49021 pill       |
+17520 email   | 39364 per        |
+15160 new     | 35020 desjardins |
+14471 would   | 34998 de         |
+13861 please  | 28677 mg         |
+13483 code    | 28429 price      |
+13227 may     | 25156 item       |
+12306 one     | 24110 le         |
+11877 mailing | 21911 save       |
+11779 news    | 20845 product    |
+
+Training Reduced Vocabulary...
+100%|█████████████████████████████████████████████████████████████████████████████████| 2/2 [00:09<00:00,  4.44s/class]
+ham  Likelihood: 100%|██████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 66841.50word/s]
+spam Likelihood: 100%|██████████████████████████████████████████████████████████| 200/200 [00:00<00:00, 50132.12word/s]
+Training complete with 200 features (2741367 total counts)
+Training took 00:00:18.
+
+Testing Reduced Vocabulary...
+100%|█████████████████████████████████████████████████████████████████████████| 14608/14608 [01:26<00:00, 169.31test/s]
+
+Reduced Vocabulary Without Laplace Smoothing
+Accuracy: 87.06873%
+              precision    recall  f1-score   support
+
+         ham       0.73      0.97      0.83      4903
+        spam       0.98      0.82      0.89      9705
+
+   micro avg       0.87      0.87      0.87     14608
+   macro avg       0.86      0.90      0.86     14608
+weighted avg       0.90      0.87      0.87     14608
+
+Reduced Vocabulary With Laplace Smoothing
+Accuracy: 87.06873%
+              precision    recall  f1-score   support
+
+         ham       0.73      0.97      0.83      4903
+        spam       0.98      0.82      0.89      9705
+
+   micro avg       0.87      0.87      0.87     14608
+   macro avg       0.86      0.90      0.86     14608
+weighted avg       0.90      0.87      0.87     14608
+
+Top 10 words:
+      ham     |       spam       |
+17759 list    | 49021 pill       |
+17520 email   | 39364 per        |
+15160 new     | 35020 desjardins |
+14471 would   | 34998 de         |
+13861 please  | 28677 mg         |
+13483 code    | 28429 price      |
+13227 may     | 25156 item       |
+12306 one     | 24110 le         |
+11877 mailing | 21911 save       |
+11779 news    | 20845 product    |
